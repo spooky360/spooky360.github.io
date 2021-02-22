@@ -1,0 +1,206 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimal-ui">
+    <title>Intigriti&#x27;s 0221 XSS Challenge write-up</title>
+    <link type="text/css" rel="stylesheet" href="assets/css/github-markdown.css">
+    <link type="text/css" rel="stylesheet" href="assets/css/pilcrow.css">
+    <link type="text/css" rel="stylesheet" href="assets/css/hljs-github.min.css"/>
+  </head>
+  <body>
+    <article class="markdown-body"><h1 id="intigriti's-0221-xss-challenge-write-up"><a class="header-link" href="#intigriti's-0221-xss-challenge-write-up"></a>Intigriti&#39;s 0221 XSS Challenge write-up</h1>
+<p>Tested on chrome (linux)</p>
+<p>On February 15th, a new XSS challenge by Intigriti popped-out ! This one was created by <a href="https://twitter.com/holme_sec">@holme_sec</a>, based on a real-life bug he found. I always love to try to solve them, so let&#39;s go !
+Here&#39;s my modest write up.</p>
+<h2 id="the-rules-for-a-valid-solution"><a class="header-link" href="#the-rules-for-a-valid-solution"></a>The rules for a valid solution</h2>
+<ul class="list">
+<li>Should call alert(origin);</li>
+<li>Should bypass CSP</li>
+<li>Should require no user-interaction</li>
+<li>Should work on the latest version of Firefox or Chrome</li>
+<li>Should leverage a cross site scripting vulnerability on this page</li>
+<li>Shouldn&#39;t be self-XSS or related to MiTM attacks</li>
+<li>Should be reported at go.intigriti.com/submit-solution</li>
+</ul>
+<h2 id="challenge-homepage"><a class="header-link" href="#challenge-homepage"></a>Challenge homepage</h2>
+<p>This is what the challenge page looks like:</p>
+<p class="img-container"><img src="1.png" alt="challenge page"></p>
+<p>Basically, we can enter some content in the title, assignment and the anti-robot fields ans the app will give us a grade and a link to share our submission.</p>
+<p class="img-container"><img src="2.png" alt="I&#39;ve got an A !"></p>
+<p>What would happen if we click on the link ? Let&#39;s see it.
+<img src="5.png" alt="Parameters reflected">
+As you can see, we&#39;ve got 2 parameters (<code>assignmentTitle</code> and <code>assignmentText</code>) that are reflected in the matching fields. Interesting !!</p>
+<p>We played enough, it&#39;s time to dive into the source code !</p>
+<h2 id="source-code-review"><a class="header-link" href="#source-code-review"></a>Source code review</h2>
+<p>First thing we see are the CSP. This is not a surprise, because we need to bypass them.</p>
+<p class="img-container"><img src="3.png" alt="CSP on meta"></p>
+<p>We won&#39;t be able to load external javascript nor to use inline/event (like onclick or onerror) based payload ! But, <strong>eval()</strong> is not forbidden. </p>
+<p>The rest of the page doesn&#39;t contain anything particular, except in the lasts lines: a <strong><code>script.js</code></strong> is loaded.</p>
+<p class="img-container"><img src="4.png" alt="script.js is loaded"></p>
+<p>Here&#39;s the content of the <strong><code>script.js</code></strong> file.</p>
+<pre class="hljs"><code><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">startGrade</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">var</span> text = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"assignmentText"</span>).value;
+  checkLength(text);
+  result = <span class="hljs-built_in">window</span>.result || {
+    <span class="hljs-attr">message</span>: <span class="hljs-string">"Your submission is too short."</span>,
+    <span class="hljs-attr">error</span>: <span class="hljs-number">1</span>,
+  }; <span class="hljs-comment">//If the result object hasn't been defined yet, the submission must be too short</span>
+  <span class="hljs-keyword">if</span> (result.error) {
+    endGrade();
+  } <span class="hljs-keyword">else</span> {
+    getQAnswer();
+    <span class="hljs-keyword">if</span> (!passQuiz()) {
+      result.message = <span class="hljs-string">"We don't allow robots at the Unicodeversity (yet)!"</span>;
+      result.error = <span class="hljs-number">1</span>;
+    } <span class="hljs-keyword">else</span> {
+      result.grade = <span class="hljs-string">"ABCDEF"</span>[<span class="hljs-built_in">Math</span>.floor(<span class="hljs-built_in">Math</span>.random() * <span class="hljs-number">6</span>)]; <span class="hljs-comment">//Don't tell the students we don't actually read their submissions</span>
+    }
+    endGrade();
+  }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">endGrade</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"message"</span>).innerText = result.message;
+  <span class="hljs-keyword">if</span> (result.grade) {
+    <span class="hljs-built_in">document</span>.getElementById(
+      <span class="hljs-string">"grade"</span>
+    ).innerText = <span class="hljs-string">`You got a(n) <span class="hljs-subst">${result.grade}</span>!`</span>;
+  }
+  <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"share"</span>).style.visibility = <span class="hljs-string">"initial"</span>;
+  <span class="hljs-built_in">document</span>.getElementById(
+    <span class="hljs-string">"share-link"</span>
+  ).href = <span class="hljs-string">`https://challenge-0221.intigriti.io/?assignmentTitle=<span class="hljs-subst">${
+    <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"assignmentTitle"</span>).value
+  }</span>&amp;assignmentText=<span class="hljs-subst">${<span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"assignmentText"</span>).value}</span>`</span>;
+  <span class="hljs-keyword">delete</span> result;
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">checkLength</span>(<span class="hljs-params">text</span>) </span>{
+  <span class="hljs-keyword">if</span> (text.length &gt; <span class="hljs-number">50</span>) {
+    result = { <span class="hljs-attr">message</span>: <span class="hljs-string">"Thanks for your submission!"</span> };
+  }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getQAnswer</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">var</span> answer = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"answer"</span>).value;
+  <span class="hljs-keyword">if</span> (<span class="hljs-regexp">/^[0-9]+$/</span>.test(answer)) {
+    <span class="hljs-keyword">if</span> (<span class="hljs-keyword">typeof</span> result !== <span class="hljs-string">"undefined"</span>) {
+      result.questionAnswer = { <span class="hljs-attr">value</span>: answer };
+    } <span class="hljs-keyword">else</span> {
+      result = { <span class="hljs-attr">questionAnswer</span>: { <span class="hljs-attr">value</span>: answer } };
+    }
+  }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">passQuiz</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">if</span> (<span class="hljs-keyword">typeof</span> result.questionAnswer !== <span class="hljs-string">"undefined"</span>) {
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">eval</span>(result.questionAnswer.value + <span class="hljs-string">" == "</span> + question);
+  }
+  <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>;
+}
+
+<span class="hljs-keyword">var</span> question = <span class="hljs-string">`<span class="hljs-subst">${<span class="hljs-built_in">Math</span>.floor(<span class="hljs-built_in">Math</span>.random() * <span class="hljs-number">10</span>) + <span class="hljs-number">1</span>}</span> + <span class="hljs-subst">${
+  <span class="hljs-built_in">Math</span>.floor(<span class="hljs-built_in">Math</span>.random() * <span class="hljs-number">10</span>) + <span class="hljs-number">1</span>
+}</span>`</span>;
+
+<span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"question"</span>).innerText = <span class="hljs-string">`<span class="hljs-subst">${question}</span> = ?`</span>;
+
+<span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"submit"</span>).addEventListener(<span class="hljs-string">"click"</span>, startGrade);
+
+<span class="hljs-keyword">const</span> urlParams = <span class="hljs-keyword">new</span> URLSearchParams(location.search);
+<span class="hljs-keyword">if</span> (urlParams.has(<span class="hljs-string">"autosubmit"</span>)) {
+  startGrade();
+}</code></pre><p>We can find 5 functions. Among theses functions, the <code>passQuiz()</code> seems to be particularly intersting. Why ? Because of the call to <code>eval()</code>, which is often a bad idea ! And remember, <code>eval()</code>is allowed by the CSP ! So, I think we found the key point. We need to inject our payload to overwrite <code>result.questionAnswer.value</code> value.</p>
+<p>What does it do ?</p>
+<pre class="hljs"><code>
+<span class="hljs-keyword">var</span> question = <span class="hljs-string">`<span class="hljs-subst">${<span class="hljs-built_in">Math</span>.floor(<span class="hljs-built_in">Math</span>.random() * <span class="hljs-number">10</span>) + <span class="hljs-number">1</span>}</span> + <span class="hljs-subst">${
+  <span class="hljs-built_in">Math</span>.floor(<span class="hljs-built_in">Math</span>.random() * <span class="hljs-number">10</span>) + <span class="hljs-number">1</span>
+}</span>`</span>;
+
+<span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"question"</span>).innerText = <span class="hljs-string">`<span class="hljs-subst">${question}</span> = ?`</span>;</code></pre><p>This part generates the anti-robots question.</p>
+<pre class="hljs"><code><span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"submit"</span>).addEventListener(<span class="hljs-string">"click"</span>, startGrade);
+<span class="hljs-keyword">const</span> urlParams = <span class="hljs-keyword">new</span> URLSearchParams(location.search);
+<span class="hljs-keyword">if</span> (urlParams.has(<span class="hljs-string">"autosubmit"</span>)) {
+  startGrade();
+}</code></pre><p>This part sets an onclick event to the submit button (because of CSP) to start the app script. We can too start the app script if the <code>autosubmit</code> parameter is present in the URL.</p>
+<pre class="hljs"><code><span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">startGrade</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">var</span> text = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"assignmentText"</span>).value;
+  checkLength(text);
+  result = <span class="hljs-built_in">window</span>.result || {
+    <span class="hljs-attr">message</span>: <span class="hljs-string">"Your submission is too short."</span>,
+    <span class="hljs-attr">error</span>: <span class="hljs-number">1</span>,
+  }; <span class="hljs-comment">//If the result object hasn't been defined yet, the submission must be too short</span>
+  <span class="hljs-keyword">if</span> (result.error) {
+    endGrade();
+  } <span class="hljs-keyword">else</span> {
+    getQAnswer();
+    <span class="hljs-keyword">if</span> (!passQuiz()) {
+      result.message = <span class="hljs-string">"We don't allow robots at the Unicodeversity (yet)!"</span>;
+      result.error = <span class="hljs-number">1</span>;
+    } <span class="hljs-keyword">else</span> {
+      result.grade = <span class="hljs-string">"ABCDEF"</span>[<span class="hljs-built_in">Math</span>.floor(<span class="hljs-built_in">Math</span>.random() * <span class="hljs-number">6</span>)]; <span class="hljs-comment">//Don't tell the students we don't actually read their submissions</span>
+    }
+    endGrade();
+  }
+}
+<span class="hljs-comment">//////</span>
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">checkLength</span>(<span class="hljs-params">text</span>) </span>{
+  <span class="hljs-keyword">if</span> (text.length &gt; <span class="hljs-number">50</span>) {
+    result = { <span class="hljs-attr">message</span>: <span class="hljs-string">"Thanks for your submission!"</span> };
+  }
+}</code></pre><p><code>startGrade()</code> is the first function that is called. 
+It will take the value sets in the assignmentText field, check for its length, create a <code>result</code> javascript object. 
+If the <code>result.error</code> attribute is not set, it will call the <code>getQAnswer()</code> and <code>passQuiz()</code> functions.</p>
+<pre class="hljs"><code>
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">getQAnswer</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">var</span> answer = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"answer"</span>).value;
+  <span class="hljs-keyword">if</span> (<span class="hljs-regexp">/^[0-9]+$/</span>.test(answer)) {
+    <span class="hljs-keyword">if</span> (<span class="hljs-keyword">typeof</span> result !== <span class="hljs-string">"undefined"</span>) {
+      result.questionAnswer = { <span class="hljs-attr">value</span>: answer };
+    } <span class="hljs-keyword">else</span> {
+      result = { <span class="hljs-attr">questionAnswer</span>: { <span class="hljs-attr">value</span>: answer } };
+    }
+  }
+}
+
+<span class="hljs-function"><span class="hljs-keyword">function</span> <span class="hljs-title">passQuiz</span>(<span class="hljs-params"></span>) </span>{
+  <span class="hljs-keyword">if</span> (<span class="hljs-keyword">typeof</span> result.questionAnswer !== <span class="hljs-string">"undefined"</span>) {
+    <span class="hljs-keyword">return</span> <span class="hljs-built_in">eval</span>(result.questionAnswer.value + <span class="hljs-string">" == "</span> + question);
+  }
+  <span class="hljs-keyword">return</span> <span class="hljs-literal">false</span>;
+}</code></pre><p><code>getQAnswer()</code> will check if the anti robot question answer is digit-only. If yes, it sets the <code>result.questionAnswer</code> attribute.</p>
+<p><code>passQuiz()</code> will check if <code>result.questionAnswer</code> is &quot;undefined&quot; or not. If not, it will <strong>eval</strong>uate its value to check if it is valid (for example, <code>eval(&quot;4 == 2+2&quot;)</code>).</p>
+<p>So, if we sets <code>result.questionAnswer.value</code> value to <code>alert(origin)</code>, it will be executed.</p>
+<h2 id="first-two-hints"><a class="header-link" href="#first-two-hints"></a>First two hints</h2>
+<p>I really started the challenge after the two first hints. Those hint were :</p>
+<p class="img-container"><img src="6.png" alt="two first hints"></p>
+<p>They are easy to understand: the theme of the challenge is unicode and the first tip is about unicode char! We would have to use unicode so..
+The second tip talks about title... It seems clear that we will have to inject payload in this field and not the two others.</p>
+<h2 id="first-try,-unicode-char-in-title-field"><a class="header-link" href="#first-try,-unicode-char-in-title-field"></a>First try, unicode char in title field</h2>
+<p>It&#39;s time to try to put an unicode char in the title field and see how the app reacts.
+We can try with the hint one (ℋ or \u210B). If we want to get it reflected, we need to put it in the URL, not in the input and then click on Submit.</p>
+<p class="img-container"><img src="7.png" alt="That&#39;s weird !"></p>
+<p>Reflected value is strange !! <code>ℋ</code> becames <code>!0b</code>. How ?
+In fact, ℋ is coded with 2 bytes: 0x21 and 0x0B. 0B ? Like in <code>!0b</code> yes ? Yes, and <code>!</code>is an ASCII char coded by one byte, <code>0x21</code>.
+In fact, when we put an unicode char, the server will interpret the first byte as ASCII and dispay the &quot;hex value&quot; of the second.</p>
+<p>Knowing that, we can try to inject some content, for example closing/opening HTML tags, adding attributes...</p>
+<p>To see what happens, I tried (knowing it would fail) with the <code>≐</code> char (\u2250). It will be interpreted as <code>&quot;50</code> which will close the <code>value</code> attribute. I als appended <code>onclick=alert(1)</code> .</p>
+<p class="img-container"><img src="8.png" alt="onclick"></p>
+<p>Onclick attribute is well reflected and, as excepted, CSP blocks it.
+<img src="9.png" alt="csp blocks inline javascript"></p>
+<p>Ok, now we know how to inject things. We cannot use <code>onxxxxxxx</code> attributes because of CSP. We have to create new HTML tags. This is easy, we just have to find unicode chars that start with 3C(<code>&lt;</code> char) and 3E (<code>&gt;</code> char). But we have a problem. The second byte will be appended and its raw hex value will be displayed. We need to find a valid HTML tag that starts with <code>&lt;[A-F][A-F]</code>. 
+Go to <a href="https://www.w3schools.com/tags/default.asp">https://www.w3schools.com/tags/default.asp</a> to find a full HTML tags list. We find some tags such as <code>&lt;abbr&gt;</code>, <code>&lt;dd&gt;</code>, <code>&lt;base&gt;</code>, <code>&lt;data&gt;</code>, ... <code>&lt;data&gt;</code> is intersting because it comes with a <code>value</code> attribute... If you remember, we said that we need to overwrite the value of an element... So <code>&lt;data&gt;</code> seems to be definitely the good choice.</p>
+<p>First thing I did is closing the <code>assignmentTitle</code> value attribute by injecting a double quote. Then, opening some <code>&lt;data&gt;</code> tags and played with ids, names and values.</p>
+<p>Javascript allows us to access HTML elements by there id. Moreover The app script is vulnerable to DOM clobbering (<a href="https://portswigger.net/web-security/dom-based/dom-clobbering">https://portswigger.net/web-security/dom-based/dom-clobbering</a>) because of the following part:</p>
+<pre class="hljs"><code> result = <span class="hljs-built_in">window</span>.result || {
+    <span class="hljs-attr">message</span>: <span class="hljs-string">"Your submission is too short."</span>,
+    <span class="hljs-attr">error</span>: <span class="hljs-number">1</span>,
+  } </code></pre><p>Final payload (chrome):
+<a href="https://challenge-0221.intigriti.io/?assignmentTitle=lol%E2%89%90%20a=b%20%E3%BB%90l%E3%B3%9Ata%20id=result%20name=questionAnswer%20value=alert(origin)%20%E3%BB%90%E3%B3%9Ata%20id=result%20&amp;autosubmit">https://challenge-0221.intigriti.io/?assignmentTitle=lol%E2%89%90%20a=b%20%E3%BB%90l%E3%B3%9Ata%20id=result%20name=questionAnswer%20value=alert(origin)%20%E3%BB%90%E3%B3%9Ata%20id=result%20&amp;autosubmit</a></p>
+<p class="img-container"><img src="10.png" alt=""></p>
+<p class="img-container"><img src="11.png" alt="Success"></p>
+    </article>
+  </body>
+</html>
